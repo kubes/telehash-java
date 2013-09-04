@@ -87,7 +87,26 @@
 		  <artifactId>netty-all</artifactId>
 		  <version>4.0.6.Final</version>
 		</dependency>
-            
+
+    <!-- Bouncy Castle -->
+    <dependency>
+		  <groupId>bouncycastle</groupId>
+		  <artifactId>bcprov-jdk16</artifactId>
+		  <version>140</version>
+		</dependency>
+
+    <!-- Jackson JSON parser -->
+    <dependency>
+      <groupId>org.codehaus.jackson</groupId>
+      <artifactId>jackson-core-asl</artifactId>
+      <version>1.9.13</version>
+    </dependency>
+    <dependency>
+      <groupId>org.codehaus.jackson</groupId>
+      <artifactId>jackson-mapper-asl</artifactId>
+      <version>1.9.13</version>
+    </dependency>
+    		
   </dependencies>
 
   <build>
