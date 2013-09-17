@@ -9,18 +9,18 @@ import org.apache.commons.lang.builder.ToStringBuilder;
 public class Seed
   implements Serializable, Cloneable {
 
-  private String publicKey;
+  private String publicKeyPem;
   private String host;
   private int port;
 
-  public Seed(String host, int port, String publicKey) {
+  public Seed(String host, int port, String publicKeyPem) {
     this.host = host;
     this.port = port;
-    this.publicKey = publicKey;
+    this.publicKeyPem = publicKeyPem;
   }
 
-  public String getPublicKey() {
-    return publicKey;
+  public String getPublicKeyPem() {
+    return publicKeyPem;
   }
 
   public String getHost() {

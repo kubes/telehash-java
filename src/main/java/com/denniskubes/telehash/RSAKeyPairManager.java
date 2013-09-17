@@ -2,13 +2,18 @@ package com.denniskubes.telehash;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.StringReader;
 import java.io.StringWriter;
 import java.security.KeyPair;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.security.Security;
 
 import org.apache.commons.io.FileUtils;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.jce.provider.JCERSAPublicKey;
 import org.bouncycastle.jce.provider.JDKKeyPairGenerator;
+import org.bouncycastle.openssl.PEMReader;
 import org.bouncycastle.openssl.PEMWriter;
 
 public class RSAKeyPairManager {
@@ -59,6 +64,18 @@ public class RSAKeyPairManager {
     else {
       generateAndSaveKeys();
     }
+  }
+
+  public PublicKey getPublicKey()
+    throws IOException {
+    PEMReader pemReader = new PEMReader(new StringReader(publicKeyPem));
+    return (PublicKey)pemReader.readObject();
+  }
+
+  public PrivateKey getPrivateKey()
+    throws IOException {
+    PEMReader pemReader = new PEMReader(new StringReader(privateKeyPem));
+    return ((KeyPair)pemReader.readObject()).getPrivate();
   }
 
   public String getPublicKeyPem() {
