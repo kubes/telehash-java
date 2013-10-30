@@ -55,83 +55,123 @@ public class TelehashClient {
   private byte[] getOpenPacketBytes()
     throws Exception {
 
-    String hashname = "8f83606d57ab52161aec9868725d53f2054d9ae16a91274ffcb20a68a15c0855";
+    // get the sender's RSA public and private key
     File pubKeyFile = new File(
       "/home/dennis/Projects/telehash/keys/sender-pub.key");
     File privKeyFile = new File(
       "/home/dennis/Projects/telehash/keys/sender-priv.key");
-    RSAKeyPairManager manager = new RSAKeyPairManager(pubKeyFile, privKeyFile);
+    RSAKeyPairManager senderRSA = new RSAKeyPairManager(pubKeyFile, privKeyFile);
 
+    // get the recipient's RSA public from the seeds file
+    String recipentHashname = "8f83606d57ab52161aec9868725d53f2054d9ae16a91274ffcb20a68a15c0855";
     File seedFile = new File("/home/dennis/Projects/telehash/keys/seeds.json");
     SeedReader seedReader = new SeedReader(seedFile);
-    Seed receiverSeed = seedReader.getSeed(hashname);
+    Seed receiverSeed = seedReader.getSeed(recipentHashname);
     JCERSAPublicKey receiverPubKey = TelehashUtils.getRSAPublicKeyFromPemString(receiverSeed.getPublicKeyPem());
-
     SubjectPublicKeyInfo subjectPublicKeyInfo = new SubjectPublicKeyInfo(
       (ASN1Sequence)ASN1Object.fromByteArray(receiverPubKey.getEncoded()));
 
+    // create an ecc key on the fly through the ecc key pair manager and then
+    // encrypt it using rsa
     AsymmetricKeyParameter param = PublicKeyFactory.createKey(subjectPublicKeyInfo);
     AsymmetricBlockCipher cipher = new OAEPEncoding(new RSAEngine(),
       new SHA1Digest());
     cipher.init(true, param);
-
     ElipticKeyPairManager eccKpMan = new ElipticKeyPairManager();
     byte[] eccPubKey = eccKpMan.getUncompressedPublicKey();
-    byte[] encrypted = cipher.processBlock(eccPubKey, 0, eccPubKey.length);
+    byte[] eccRSAEncrypted = cipher.processBlock(eccPubKey, 0, eccPubKey.length);
 
+    // create the line, similar to a session cookie, from random 16 bytes
     Hex hex = new Hex();
-    String line = new String(hex.encode(getRandomBytes(16)));
+    byte[] lineBytes = getRandomBytes(16);
+    String line = new String(hex.encode(lineBytes));
 
+    // create the inner packet, who I am sending to, the timestamp, and the
+    // line session cookie
     Map<String, Object> innerPacketVals = new LinkedHashMap<String, Object>();
-    innerPacketVals.put("to", hashname);
+    innerPacketVals.put("to", recipentHashname);
     innerPacketVals.put("at", System.currentTimeMillis());
     innerPacketVals.put("line", line);
-    String packetJson = JSON.serializeToJson(innerPacketVals);
-    byte[] jsonBytes = packetJson.getBytes();
+    String innerPacketJson = JSON.serializeToJson(innerPacketVals);
+    byte[] innerPacketJsonBytes = innerPacketJson.getBytes();
 
-    byte[] senderPubBytes = TelehashUtils.getPublicKeyDER(manager.getPublicKeyPem());
-    int innerNumBytes = 2 + jsonBytes.length + senderPubBytes.length;
+    // get the bytes for the senders public RSA key
+    byte[] senderPubBytes = TelehashUtils.getPublicKeyDER(senderRSA.getPublicKeyPem());
+
+    // get total bytes which is inner packet json and senders RSA public key
+    // in unencrypted form
+    int innerNumBytes = 2 + innerPacketJsonBytes.length + senderPubBytes.length;
+
+    // create array to hold inner packet
     byte[] innerPacketBytes = new byte[innerNumBytes];
 
-    byte[] jsonLengthBytes = ByteBuffer.allocate(2).putShort(
-      (short)jsonBytes.length).array();
-    System.arraycopy(jsonLengthBytes, 0, innerPacketBytes, 0,
-      jsonLengthBytes.length);
-    System.arraycopy(jsonBytes, 0, innerPacketBytes, jsonLengthBytes.length,
-      jsonBytes.length);
+    // copy the inner packet json length, then inner json unencrypted, and then
+    // the unencrypted senders RSA public key
+    byte[] innerJsonLengthBytes = ByteBuffer.allocate(2).putShort(
+      (short)innerPacketJsonBytes.length).array();
+    System.arraycopy(innerJsonLengthBytes, 0, innerPacketBytes, 0,
+      innerJsonLengthBytes.length);
+    System.arraycopy(innerPacketJsonBytes, 0, innerPacketBytes,
+      innerJsonLengthBytes.length, innerPacketJsonBytes.length);
     System.arraycopy(senderPubBytes, 0, innerPacketBytes,
-      jsonLengthBytes.length + jsonBytes.length, senderPubBytes.length);
+      innerJsonLengthBytes.length + innerPacketJsonBytes.length,
+      senderPubBytes.length);
 
-    Cipher aesCipher = Cipher.getInstance("AES/CTR/NoPadding", "BC");
-    byte[] eccSha256 = DigestUtils.sha256(eccPubKey);
-    Key key = new SecretKeySpec(eccSha256, "AES");
-    byte[] N = getRandomBytes(16);
-    aesCipher.init(Cipher.ENCRYPT_MODE, key, new IvParameterSpec(N));
-    byte[] aesEncrypted = aesCipher.doFinal(innerPacketBytes);
+    // use AES256 with ecc key to encrypt inner packet bytes
+    Cipher aesInnerCipher = Cipher.getInstance("AES/CTR/NoPadding", "BC");
+    byte[] eccInnerSha256 = DigestUtils.sha256(eccPubKey);
+    Key aesInnerKey = new SecretKeySpec(eccInnerSha256, "AES");
+    byte[] salt = getRandomBytes(16);
+    aesInnerCipher.init(Cipher.ENCRYPT_MODE, aesInnerKey, new IvParameterSpec(
+      salt));
+    byte[] aesEncryptedInnerPacket = aesInnerCipher.doFinal(innerPacketBytes);
 
+    // sign the AES256 encrypted inner packet
     Signature signer = Signature.getInstance("SHA256withRSA", "BC");
-    signer.initSign(manager.getPrivateKey());
-    signer.update(aesEncrypted);
-    byte[] sigBytes = signer.sign();
+    signer.initSign(senderRSA.getPrivateKey());
+    signer.update(aesEncryptedInnerPacket);
+    byte[] aesEncryptedInnerSig = signer.sign();
 
+    // create the key used for the sha256 of the sig
+    byte[] sigKeyBytes = new byte[eccPubKey.length + lineBytes.length];
+    System.arraycopy(lineBytes, 0, sigKeyBytes, 0, lineBytes.length);
+    System.arraycopy(eccPubKey, 0, sigKeyBytes, lineBytes.length,
+      eccPubKey.length);
+
+    // encrypt the signature using and aes with sha256
+    Cipher aesSigCipher = Cipher.getInstance("AES/CTR/NoPadding", "BC");
+    byte[] sigSha256 = DigestUtils.sha256(sigKeyBytes);
+    Key sigKey = new SecretKeySpec(sigSha256, "AES");
+    aesSigCipher.init(Cipher.ENCRYPT_MODE, sigKey, new IvParameterSpec(salt));
+    byte[] aesEncryptedSig = aesSigCipher.doFinal(aesEncryptedInnerSig);
+
+    // create an open packet to wrap the inner packet. Will contain the on the
+    // fly encrypted ecc public key for the session, the salt for AES, the
+    // signature, and the packet type which is open
     Map<String, Object> openPacket = new LinkedHashMap<String, Object>();
-    openPacket.put("open", new String(Base64.encode(encrypted)));
-    openPacket.put("iv", new String(hex.encode(N)));
-    openPacket.put("sig", new String(Base64.encode(sigBytes)));
+    openPacket.put("open", new String(Base64.encode(eccRSAEncrypted)));
+    openPacket.put("iv", new String(hex.encode(salt)));
+    openPacket.put("sig", new String(Base64.encode(aesEncryptedSig)));
     openPacket.put("type", "open");
     String openPacketJson = JSON.serializeToJson(openPacket);
     byte[] openJsonBytes = openPacketJson.getBytes();
 
-    int openNumBytes = 2 + openJsonBytes.length + aesEncrypted.length;
+    // get the total number of bytes for the open packet and create array
+    int openNumBytes = 2 + openJsonBytes.length
+      + aesEncryptedInnerPacket.length;
     byte[] openPacketBytes = new byte[openNumBytes];
+
+    // copy the open packet json length, the open packet in unencrypted form,
+    // and the body which is the encrypted inner packet
     byte[] openJsonLengthBytes = ByteBuffer.allocate(2).putShort(
       (short)openJsonBytes.length).array();
     System.arraycopy(openJsonLengthBytes, 0, openPacketBytes, 0,
       openJsonLengthBytes.length);
     System.arraycopy(openJsonBytes, 0, openPacketBytes,
       openJsonLengthBytes.length, openJsonBytes.length);
-    System.arraycopy(aesEncrypted, 0, openPacketBytes,
-      openJsonLengthBytes.length + openJsonBytes.length, aesEncrypted.length);
+    System.arraycopy(aesEncryptedInnerPacket, 0, openPacketBytes,
+      openJsonLengthBytes.length + openJsonBytes.length,
+      aesEncryptedInnerPacket.length);
 
     System.out.println(new String(hex.encode(openPacketBytes)));
     return openPacketBytes;
