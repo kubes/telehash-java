@@ -23,11 +23,11 @@ public class TelehashServer {
     EventLoopGroup group = new NioEventLoopGroup();
 
     try {
+      
       Bootstrap bootstrap = new Bootstrap();
       bootstrap.group(group);
       bootstrap.channel(NioDatagramChannel.class);
       bootstrap.handler(new TelehashHandler());
-      bootstrap.option(ChannelOption.SO_BROADCAST, true);
 
       ChannelFuture cf = bootstrap.bind(port).sync();
       cf.channel().closeFuture().sync();

@@ -2,12 +2,21 @@ package com.denniskubes.telehash;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.security.KeyPair;
+import java.security.PrivateKey;
 
 import org.apache.commons.codec.digest.DigestUtils;
 import org.bouncycastle.jce.provider.JCERSAPublicKey;
 import org.bouncycastle.openssl.PEMReader;
 
 public class TelehashUtils {
+
+  public static PrivateKey getRSAPrivateKeyFromPemString(
+    String privateKeyPEM)
+    throws IOException {
+    PEMReader pemReader = new PEMReader(new StringReader(privateKeyPEM));
+    return ((KeyPair)pemReader.readObject()).getPrivate();
+  }
 
   public static JCERSAPublicKey getRSAPublicKeyFromPemString(String publicKeyPEM)
     throws IOException {

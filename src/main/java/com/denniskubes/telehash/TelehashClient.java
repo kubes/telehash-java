@@ -4,7 +4,6 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.DatagramPacket;
@@ -14,6 +13,7 @@ import java.io.File;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.security.Key;
+import java.security.Security;
 import java.security.Signature;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -34,6 +34,7 @@ import org.bouncycastle.crypto.encodings.OAEPEncoding;
 import org.bouncycastle.crypto.engines.RSAEngine;
 import org.bouncycastle.crypto.params.AsymmetricKeyParameter;
 import org.bouncycastle.crypto.util.PublicKeyFactory;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.jce.provider.JCERSAPublicKey;
 import org.bouncycastle.util.encoders.Base64;
 
@@ -54,16 +55,17 @@ public class TelehashClient {
 
   private byte[] getOpenPacketBytes()
     throws Exception {
-
+    
+    Security.addProvider(new BouncyCastleProvider());
     // get the sender's RSA public and private key
     File pubKeyFile = new File(
-      "/home/dennis/Projects/telehash/keys/sender-pub.key");
+      "/home/dennis/Projects/telehash/keys/sender-public.key");
     File privKeyFile = new File(
-      "/home/dennis/Projects/telehash/keys/sender-priv.key");
+      "/home/dennis/Projects/telehash/keys/sender-private.key");
     RSAKeyPairManager senderRSA = new RSAKeyPairManager(pubKeyFile, privKeyFile);
 
     // get the recipient's RSA public from the seeds file
-    String recipentHashname = "8f83606d57ab52161aec9868725d53f2054d9ae16a91274ffcb20a68a15c0855";
+    String recipentHashname = "a9d414c4cc0f6cd5fd73bb99079ed111b284bb8ac26f9db59310435eda8a26b6";
     File seedFile = new File("/home/dennis/Projects/telehash/keys/seeds.json");
     SeedReader seedReader = new SeedReader(seedFile);
     Seed receiverSeed = seedReader.getSeed(recipentHashname);
@@ -173,7 +175,6 @@ public class TelehashClient {
       openJsonLengthBytes.length + openJsonBytes.length,
       aesEncryptedInnerPacket.length);
 
-    System.out.println(new String(hex.encode(openPacketBytes)));
     return openPacketBytes;
   }
 
@@ -186,7 +187,6 @@ public class TelehashClient {
       Bootstrap bootstrap = new Bootstrap();
       bootstrap.group(group);
       bootstrap.channel(NioDatagramChannel.class);
-      bootstrap.option(ChannelOption.SO_BROADCAST, true);
       bootstrap.handler(new TelehashClientHandler());
 
       Channel ch = bootstrap.bind(0).sync().channel();
@@ -195,7 +195,7 @@ public class TelehashClient {
       data.writeBytes(getOpenPacketBytes());
 
       DatagramPacket packet = new DatagramPacket(data, new InetSocketAddress(
-        "255.255.255.255", port));
+        "127.0.0.1", port));
 
       ch.writeAndFlush(packet).sync();
 
