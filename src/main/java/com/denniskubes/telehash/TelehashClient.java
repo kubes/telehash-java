@@ -124,10 +124,11 @@ public class TelehashClient {
     byte[] eccInnerSha256 = DigestUtils.sha256(eccPubKey);
     Key aesInnerKey = new SecretKeySpec(eccInnerSha256, "AES");
     byte[] salt = getRandomBytes(16);
+    
     aesInnerCipher.init(Cipher.ENCRYPT_MODE, aesInnerKey, new IvParameterSpec(
       salt));
     byte[] aesEncryptedInnerPacket = aesInnerCipher.doFinal(innerPacketBytes);
-
+    
     // sign the AES256 encrypted inner packet
     Signature signer = Signature.getInstance("SHA256withRSA", "BC");
     signer.initSign(senderRSA.getPrivateKey());

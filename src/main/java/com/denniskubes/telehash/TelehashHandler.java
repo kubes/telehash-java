@@ -6,6 +6,7 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.socket.DatagramPacket;
 
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.security.Key;
 import java.security.PrivateKey;
 
@@ -66,7 +67,7 @@ public class TelehashHandler
       Hex hex = new Hex();
 
       // base64 decode the open value
-      byte[] openBase64 = Base64.decode(open);
+      byte[] openBase64 = Base64.decode(open);     
 
       // decrypt the open value which is the senders ecc public key
       String seedPrivatePEM = FileUtils.readFileToString(privKeyFile);
@@ -76,7 +77,6 @@ public class TelehashHandler
         new SHA1Digest());
       cipher.init(false, param);      
       byte[] rsaDecrypted = cipher.processBlock(openBase64, 0, openBase64.length);
-      System.out.println();
       
       // create the inner packet AES decryption key
       Cipher aesInnerCipher = Cipher.getInstance("AES/CTR/NoPadding", "BC");
@@ -87,7 +87,11 @@ public class TelehashHandler
         salt));
       byte[] aesEncryptedInnerPacket = aesInnerCipher.doFinal(bodyBytes);
       
-      System.out.println(new String(aesEncryptedInnerPacket));
+      ByteBuffer packetBuffer = ByteBuffer.wrap(aesEncryptedInnerPacket);
+      short openJsonLength = packetBuffer.getShort();
+      byte[] openJson = new byte[openJsonLength];
+      packetBuffer.get(openJson);
+      System.out.println(new String(openJson));
 
     }
 
